@@ -13,6 +13,32 @@ test('permission denied is explained', async ({ page }) => {
   await expect(page.locator('#status')).toContainText('마이크 권한이 거부');
   await expect(page.locator('#mic')).toBeEnabled();
 });
+test('Pixelle missing configuration is actionable', async ({ page }) => {
+  await page.route('**/pixelle-api/api/health', route => route.fulfill({ json: { ready: false, missing: ['RunningHub API 키가 필요합니다.'] } }));
+  await page.goto('/'); await page.locator('#ai-check').click();
+  await expect(page.locator('#ai-state')).toContainText('RunningHub API 키');
+  await expect(page.locator('#ai-generate')).toBeDisabled();
+});
+test('Pixelle capture, generation request, polling and result link', async ({ page }) => {
+  test.skip(!process.env.VRM_TEST_MODEL, 'Requires a licensed test model');
+  let captured: any;
+  const id = 'a'.repeat(32);
+  await page.route('**/pixelle-api/api/health', route => route.fulfill({ json: { ready: true, missing: [] } }));
+  await page.route('**/pixelle-api/api/jobs', route => {
+    captured = route.request().postDataJSON();
+    return route.fulfill({ status: 202, json: { id, state: 'queued', message: '준비 중' } });
+  });
+  await page.route(`**/pixelle-api/api/jobs/${id}`, route => route.fulfill({ json: { id, state: 'completed', message: 'AI 캐릭터 영상 생성이 완료됐습니다.' } }));
+  await page.route(`**/pixelle-api/api/jobs/${id}/video`, route => route.fulfill({ contentType: 'video/mp4', body: Buffer.alloc(0) }));
+  await page.goto('/'); await page.locator('#model').setInputFiles(process.env.VRM_TEST_MODEL!);
+  await expect(page.locator('#ai-capture')).toBeEnabled(); await page.locator('#ai-capture').click();
+  await expect(page.locator('#ai-image')).toBeVisible();
+  await page.locator('#ai-script').fill('안녕하세요'); await page.locator('#ai-check').click();
+  await expect(page.locator('#ai-generate')).toBeEnabled(); await page.locator('#ai-generate').click();
+  await expect(page.locator('#ai-download')).toBeVisible();
+  expect(captured.image).toMatch(/^data:image\/png;base64,/); expect(captured.script).toBe('안녕하세요');
+  await expect(page.locator('#ai-download')).toHaveAttribute('href', `/pixelle-api/api/jobs/${id}/video`);
+});
 test('real VRM load, mic, recording audio/video, repeat and cleanup', async ({ page }) => {
   test.skip(!process.env.VRM_TEST_MODEL, 'Set VRM_TEST_MODEL to a locally licensed .vrm file');
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));

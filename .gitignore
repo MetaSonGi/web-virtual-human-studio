@@ -4,3 +4,8 @@ dist/
 *.webm
 .env*
 test-results/
+bridge/.jobs/
+bridge/__pycache__/
+.pytest_cache/
+*.pyc
+.venv/

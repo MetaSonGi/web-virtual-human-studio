@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { mouthLevel, smooth, webmType } from './signal';
 import { updateFace } from './face';
+import { mountPixelle } from './pixelle';
 import './style.css';
 
 document.querySelector('#app')!.innerHTML = `
@@ -46,12 +47,14 @@ async function boot() {
   let samples = new Float32Array(1024), mouth = 0, pendingMic = false;
   let recorder: MediaRecorder | undefined, recordingStream: MediaStream | undefined, downloadURL: string | undefined, started = 0;
   const download = el<HTMLAnchorElement>('download');
+  const pixelle = mountPixelle(renderer.domElement, () => !!vrm && !loading && !recorder, () => renderer.render(scene, camera));
   const syncButtons = () => {
     const busy = !!recorder;
     recordButton.disabled = !vrm || !micStream || busy || loading || pendingMic;
     stopButton.disabled = !recorder || recorder.state !== 'recording';
     micButton.disabled = busy || pendingMic;
     fileInput.disabled = busy || loading;
+    pixelle.refresh();
   };
   const resetCamera = () => {
     const box = vrm ? new THREE.Box3().setFromObject(vrm.scene) : new THREE.Box3(new THREE.Vector3(-0.5,0,-0.5),new THREE.Vector3(0.5,1.8,0.5));
@@ -159,6 +162,7 @@ async function boot() {
   } animate();
   function cleanup() {
     disposed = true; cancelAnimationFrame(frame); resize.disconnect();
+    pixelle.dispose();
     if (recorder?.state === 'recording') recorder.stop();
     releaseMic(); releaseRecording(); if (downloadURL) URL.revokeObjectURL(downloadURL);
     controls.dispose(); if (vrm) VRMUtils.deepDispose(vrm.scene);

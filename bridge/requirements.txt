@@ -1,0 +1,6 @@
+fastapi>=0.115,<1
+uvicorn>=0.32,<1
+pillow>=10,<12
+httpx>=0.28,<1
+PyYAML>=6,<7
+pytest>=8,<10
