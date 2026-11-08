@@ -19,12 +19,22 @@ test('real VRM load, mic, recording audio/video, repeat and cleanup', async ({ p
   await page.addInitScript(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     (window as any).__streams = [];
-    navigator.mediaDevices.getUserMedia = async options => { const stream = await original(options); (window as any).__streams.push(stream); return stream; };
+    navigator.mediaDevices.getUserMedia = async options => {
+      const deviceStream = await original(options);
+      deviceStream.getTracks().forEach(track => track.stop());
+      // Deterministic audible input instead of Chromium's intermittent fake-device tone.
+      const context = new AudioContext(); await context.resume();
+      const tone = context.createOscillator(); const gain = context.createGain(); gain.gain.value = 0.12;
+      const destination = context.createMediaStreamDestination(); tone.connect(gain).connect(destination); tone.start();
+      const stream = destination.stream; (window as any).__streams.push(stream); return stream;
+    };
   });
   await page.goto('/');
   await page.locator('#model').setInputFiles(process.env.VRM_TEST_MODEL!);
   await expect(page.locator('#status')).toContainText('모델 준비 완료');
   await page.locator('#mic').click(); await expect(page.locator('#record')).toBeEnabled();
+  await page.locator('#expression').selectOption('surprised');
+  await expect.poll(() => page.locator('#level').evaluate((element: HTMLMeterElement) => element.value)).toBeGreaterThan(0.01);
   for (let i = 0; i < 2; i++) {
     await page.locator('#record').click(); await expect(page.locator('#mic')).toBeDisabled();
     await page.waitForTimeout(1400); await page.locator('#stop').click();

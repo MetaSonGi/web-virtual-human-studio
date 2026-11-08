@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { mouthLevel, smooth, webmType } from './signal';
+import { updateFace } from './face';
 import './style.css';
 
 document.querySelector('#app')!.innerHTML = `
@@ -98,9 +99,11 @@ async function boot() {
     pendingMic = true; syncButtons();
     try {
       if (!isSecureContext || !navigator.mediaDevices?.getUserMedia) throw new Error('마이크는 HTTPS 또는 localhost에서 사용할 수 있습니다.');
+      // Resume inside the click gesture, before awaiting the permission dialog.
+      audio = new AudioContext(); await audio.resume();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
       if (disposed) { stream.getTracks().forEach(t => t.stop()); return; }
-      micStream = stream; audio = new AudioContext(); await audio.resume();
+      micStream = stream;
       if (disposed) { releaseMic(); return; }
       source = audio.createMediaStreamSource(stream); analyser = audio.createAnalyser(); analyser.fftSize = 1024;
       samples = new Float32Array(analyser.fftSize); source.connect(analyser);
@@ -148,9 +151,8 @@ async function boot() {
     if (analyser) { analyser.getFloatTimeDomainData(samples); target = mouthLevel(samples, Number(el<HTMLInputElement>('gain').value)); }
     mouth = smooth(mouth, target, delta); el<HTMLMeterElement>('level').value = mouth;
     if (vrm) {
-      const manager = vrm.expressionManager;
-      for (const option of expression.options) manager?.setValue(option.value, option.value === expression.value && option.value !== 'neutral' ? 1 : 0);
-      manager?.setValue('aa', mouth); vrm.update(delta);
+      updateFace(vrm.expressionManager, expression.value, mouth, !!micStream);
+      vrm.update(delta);
     }
     if (recorder?.state === 'recording') { const seconds = Math.floor((performance.now() - started) / 1000); el('timer').textContent = `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`; }
     controls.update(); renderer.render(scene, camera);
